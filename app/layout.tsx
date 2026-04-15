@@ -1,22 +1,33 @@
-import "./globals.css";
-import type { Metadata } from "next";
-import Providers from "./providers";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Web3 Portal",
-  description: "Secure Web3 portal with wallet connection",
-};
+import * as React from "react";
+import { WagmiProvider, createConfig, http } from "wagmi";
+import { bsc, bscTestnet } from "wagmi/chains";
+import { injected, walletConnect } from "wagmi/connectors";
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const queryClient = new QueryClient();
+
+const config = createConfig({
+  chains: [bsc, bscTestnet],
+  connectors: [
+    injected(),
+    walletConnect({
+      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "",
+    }),
+  ],
+  transports: {
+    [bsc.id]: http(),
+    [bscTestnet.id]: http(),
+  },
+  ssr: true,
+});
+
+export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-white text-gray-900 antialiased">
-        <Providers>{children}</Providers>
-      </body>
-    </html>
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </WagmiProvider>
   );
 }

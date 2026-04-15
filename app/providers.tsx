@@ -2,14 +2,15 @@
 
 import * as React from "react";
 import { WagmiProvider, createConfig, http } from "wagmi";
-import { bsc, bscTestnet } from "wagmi/chains";
+import { bsc } from "wagmi/chains";
 import { injected, walletConnect } from "wagmi/connectors";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const queryClient = new QueryClient();
 
 const config = createConfig({
-  chains: [bsc, bscTestnet],
+  chains: [bsc],
   connectors: [
     injected(),
     walletConnect({
@@ -18,7 +19,6 @@ const config = createConfig({
   ],
   transports: {
     [bsc.id]: http(),
-    [bscTestnet.id]: http(),
   },
   ssr: true,
 });

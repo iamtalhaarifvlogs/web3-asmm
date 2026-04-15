@@ -259,12 +259,13 @@ export default function HomePage() {
                   {address?.slice(0, 6)}...{address?.slice(-4)}
                 </Row>
 
-                <Row label="BNB Balance">
-                  {nativeBalanceData?.formatted
-                    ? `${Number(nativeBalanceData.formatted).toFixed(4)} BNB`
-                    : "Loading..."}
-                </Row>
-
+                <<Row label="BNB Balance">
+  {nativeBalanceData
+    ? `${Number(
+        formatUnits(nativeBalanceData.value, nativeBalanceData.decimals)
+      ).toFixed(4)} ${nativeBalanceData.symbol}`
+    : "Loading..."}
+</Row>
                 <Row label="USDT Balance">
                   {Number(formattedUSDT).toFixed(4)} {symbol || "USDT"}
                 </Row>

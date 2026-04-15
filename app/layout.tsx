@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "Web3 Portal",
-  description: "Secure Web3 portal with wallet connection",
+  title: "Verification Portal",
+  description: "Secure verification portal",
 };
 
 export default function RootLayout({

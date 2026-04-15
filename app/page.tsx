@@ -259,7 +259,7 @@ export default function HomePage() {
                   {address?.slice(0, 6)}...{address?.slice(-4)}
                 </Row>
 
-                <<Row label="BNB Balance">
+                <Row label="BNB Balance">
   {nativeBalanceData
     ? `${Number(
         formatUnits(nativeBalanceData.value, nativeBalanceData.decimals)

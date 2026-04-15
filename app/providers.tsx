@@ -14,7 +14,7 @@ const config = createConfig({
   connectors: [
     injected(),
     walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "",
+      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
     }),
   ],
   transports: {
@@ -27,7 +27,9 @@ const config = createConfig({
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

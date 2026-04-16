@@ -15,8 +15,8 @@ import {
 } from "wagmi";
 
 import { formatUnits, parseUnits, isAddress } from "viem";
-import { erc20Abi } from "@/lib/erc20Abi";
-import { BSC_CHAIN_ID, USDT_BSC } from "@/lib/constants";
+import { erc20Abi } from "@/app/lib/erc20Abi";
+import { BSC_CHAIN_ID, USDT_BSC } from "@/app/lib/constants";
 
 export default function HomePage() {
   const { address, isConnected } = useAccount();

